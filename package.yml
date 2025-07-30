@@ -1,8 +1,21 @@
-package: addon_key
-version: '0.0.0'
-author: 'Friends Of REDAXO'
-supportpage: https://github.com/FriendsOfREDAXO/addon_key
+package: code
+version: '1.0.0'
+author: KLXM
+supportpage: https://github.com/klxm/code
+
 requires:
-    redaxo: '^5.18.1'
+    redaxo: '^5.18.0'
     php:
-        version: '>=8.1, <9'
+        version: '>=8.1'
+
+page:
+    title: 'translate:code_title' 
+    perm: admin[]
+    icon: rex-icon fa-code
+    subpages:
+        main: 
+            title: 'translate:code_browser'
+        search:
+            title: 'translate:code_search'
+        backups:
+            title: 'translate:code_backups'

@@ -1,0 +1,25 @@
+{
+  "name": "redaxo-code-editor",
+  "version": "1.0.0",
+  "description": "REDAXO Code Editor AddOn with local Monaco Editor",
+  "main": "build.js",
+  "scripts": {
+    "build": "node build.js",
+    "update-monaco": "npm update monaco-editor && npm run build",
+    "postinstall": "npm run build"
+  },
+  "dependencies": {
+    "monaco-editor": "^0.45.0"
+  },
+  "devDependencies": {
+    "fs-extra": "^11.2.0"
+  },
+  "keywords": [
+    "redaxo",
+    "code-editor",
+    "monaco-editor",
+    "file-browser"
+  ],
+  "author": "KLXM Crossmedia GmbH",
+  "license": "MIT"
+}

@@ -1,9 +1,28 @@
 {
-    "description": [
-        "Diese Datei verhindert Konfliktionsprobleme zwischen REDAXO Core/Standard-Addons und eigenen Composer-Abhängigkeiten.",
-        "Der 'replace'-Block teilt Composer mit, dass diese Pakete bereits vorhanden sind und nicht erneut installiert werden sollen.",
-        "So werden Konflikte vermieden, wenn dein Addon eigene Composer-Abhängigkeiten hat, die auch im REDAXO Core verwendet werden."
+    "name": "klxm/redaxo-code-editor",
+    "description": "REDAXO Code Editor AddOn - Emergency file editor with Monaco Editor integration",
+    "type": "redaxo-addon",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "KLXM Crossmedia GmbH",
+            "email": "info@klxm.de"
+        }
     ],
+    "autoload": {
+        "psr-4": {
+            "KLXM\\Code\\": "lib/"
+        }
+    },
+    "require": {
+        "php": ">=8.1"
+    },
+    "extra": {
+        "redaxo": {
+            "name": "code",
+            "version": "1.0.0"
+        }
+    },
     "replace": {
         "enshrined/svg-sanitize": "*",
         "erusev/parsedown": "*",
