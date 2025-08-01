@@ -8,6 +8,13 @@ requires:
     php:
         version: '>=8.1'
 
+# Sicherheitseinstellungen
+config:
+    # Automatische Deaktivierung nach X Tagen (0 = deaktiviert)
+    auto_deactivate_after_days: 2
+    # Daten vor Deaktivierung bereinigen (Backups, Trash)
+    cleanup_data_on_deactivate: true
+
 page:
     title: 'translate:code_title' 
     perm: admin[]
@@ -18,4 +25,4 @@ page:
         search:
             title: 'translate:code_search'
         backups:
-            title: 'translate:code_backups'
+            title: 'Backup & Trash'

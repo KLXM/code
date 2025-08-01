@@ -8,6 +8,7 @@ use rex_dir;
 use rex_path;
 use rex_get;
 use rex_post;
+use rex_config;
 
 /**
  * Code Editor API Handler
@@ -16,6 +17,7 @@ use rex_post;
 class CodeApi
 {
     private string $dataDir;
+    private string $trashDir;
     private array $allowedExtensions = [
         'php', 'html', 'htm', 'css', 'scss', 'less', 'js', 'json', 'xml', 'sql', 
         'md', 'txt', 'yml', 'yaml', 'ini', 'conf', 'htaccess', 'gitignore', 'env',
@@ -26,11 +28,45 @@ class CodeApi
         'node_modules', '.git', '.svn', 'vendor', 'cache', 'log', 'tmp', 'temp'
     ];
 
+    /**
+     * Kritische Dateien, die nicht gelöscht werden dürfen
+     */
+    private array $protectedFiles = [
+        '.htaccess',
+        'index.php',
+        'config.yml',
+        'config.yaml', 
+        '.env',
+        '.env.local',
+        '.env.production',
+        'composer.json',
+        'composer.lock',
+        'package.json',
+        'package-lock.json',
+        'yarn.lock',
+        'boot.php',
+        'install.php',
+        'console.php',
+        'console',
+        'AppPathProvider.php',
+        'README.md',
+        'LICENSE',
+        'robots.txt',
+        'sitemap.xml',
+        'web.config'
+    ];
+
     public function __construct()
     {
         $this->dataDir = rex_addon::get('code')->getDataPath('backups');
         if (!is_dir($this->dataDir)) {
             rex_dir::create($this->dataDir);
+        }
+        
+        // Trash-Verzeichnis erstellen
+        $this->trashDir = rex_addon::get('code')->getDataPath('trash');
+        if (!is_dir($this->trashDir)) {
+            rex_dir::create($this->trashDir);
         }
     }
 
@@ -51,6 +87,9 @@ class CodeApi
         header('Pragma: no-cache');
         header('Expires: 0');
         
+        // Bei jeder API-Nutzung den "last_used" Timestamp aktualisieren
+        rex_config::set('code', 'last_used_time', time());
+        
         switch ($action) {
             case 'list':
                 return $this->listFiles(rex_get('path', 'string', ''));
@@ -61,6 +100,8 @@ class CodeApi
                 $content = rex_post('content', 'string');
                 error_log("Code Editor API - Save parameters: file='" . $filePath . "', content_length=" . strlen($content));
                 return $this->saveFile($filePath, $content);
+            case 'delete':
+                return $this->deleteFile(rex_post('file', 'string'));
             case 'search':
                 return $this->searchFiles(rex_get('term', 'string'));
             case 'backup-list':
@@ -75,6 +116,14 @@ class CodeApi
                 return $this->deleteAllBackups();
             case 'backup-test':
                 return $this->createTestBackups();
+            case 'trash-list':
+                return $this->listTrash();
+            case 'trash-restore':
+                return $this->restoreFromTrash(rex_post('trash', 'string'));
+            case 'trash-delete':
+                return $this->deleteFromTrash(rex_post('trash', 'string'));
+            case 'trash-empty':
+                return $this->emptyTrash();
             default:
                 throw new Exception('Unknown action: ' . $action);
         }
@@ -483,10 +532,326 @@ class CodeApi
         return in_array($dirname, $this->excludedDirs, true);
     }
 
+    /**
+     * Prüft ob eine Datei geschützt ist und nicht gelöscht werden darf
+     */
+    private function isProtectedFile(string $filePath): bool
+    {
+        $fileName = basename($filePath);
+        $relativePath = ltrim(str_replace(rex_path::base(), '', $filePath), '/');
+        
+        // Direkte Dateinamen-Überprüfung
+        if (in_array($fileName, $this->protectedFiles, true)) {
+            return true;
+        }
+        
+        // Relative Pfad-Überprüfung für Root-Dateien
+        if (in_array($relativePath, $this->protectedFiles, true)) {
+            return true;
+        }
+        
+        // Zusätzliche Muster-basierte Überprüfung
+        $protectedPatterns = [
+            '/^\.htaccess$/',           // .htaccess-Dateien
+            '/^index\.php$/',           // index.php-Dateien (auch in Unterordnern)
+            '/^config\.(yml|yaml)$/',   // config.yml/yaml-Dateien
+            '/^\.env/',                 // Alle .env-Dateien
+            '/^boot\.php$/',            // boot.php-Dateien
+            '/^install\.php$/',         // install.php-Dateien
+            '/composer\.(json|lock)$/', // composer-Dateien
+            '/package(-lock)?\.json$/', // npm/node-Dateien
+            '/yarn\.lock$/',            // yarn-Dateien
+        ];
+        
+        foreach ($protectedPatterns as $pattern) {
+            if (preg_match($pattern, $fileName)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
     private function formatBytes(int $bytes): string
     {
         $units = ['B', 'KB', 'MB', 'GB'];
         $factor = floor((strlen($bytes) - 1) / 3);
         return sprintf("%.1f %s", $bytes / pow(1024, $factor), $units[$factor]);
+    }
+
+    /**
+     * Löscht eine Datei in den Trash (virtuelle Löschung)
+     */
+    private function deleteFile(string $filePath): array
+    {
+        $basePath = rex_path::base();
+        $fullPath = $basePath . ltrim($filePath, '/');
+        
+        error_log("Code Editor - Delete file attempt:");
+        error_log("- File path: " . $filePath);
+        error_log("- Full path: " . $fullPath);
+        error_log("- File exists: " . (file_exists($fullPath) ? 'yes' : 'no'));
+        
+        if (!file_exists($fullPath) || !$this->isAllowedPath($fullPath)) {
+            error_log("Code Editor - Error: File not found or not allowed");
+            return ['success' => false, 'error' => 'File not found or not allowed'];
+        }
+
+        // Prüfung auf geschützte Dateien
+        if ($this->isProtectedFile($fullPath)) {
+            error_log("Code Editor - Error: File is protected from deletion: " . $filePath);
+            return [
+                'success' => false, 
+                'error' => 'Diese Datei ist systemkritisch und kann nicht gelöscht werden: ' . basename($filePath)
+            ];
+        }
+
+        if (!is_writable($fullPath)) {
+            error_log("Code Editor - Error: File not writable");
+            return ['success' => false, 'error' => 'File not writable'];
+        }
+
+        try {
+            // Backup erstellen vor der Löschung
+            $this->createBackup($fullPath);
+            
+            // Datei in Trash verschieben - bessere Pfad-Behandlung
+            $relativePath = str_replace($basePath, '', $fullPath);
+            $relativePath = ltrim($relativePath, '/'); // Führende Slashes entfernen
+            
+            // Sichere Dateiname-Erstellung für Trash
+            $safeFileName = str_replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], '_', $relativePath);
+            $trashName = date('Y-m-d_H-i-s') . '_' . $safeFileName . '.trash';
+            $trashPath = $this->trashDir . '/' . $trashName;
+            
+            // Zusätzliche Metadaten in separater Datei speichern
+            $metaData = [
+                'originalPath' => $relativePath,
+                'originalFullPath' => $fullPath,
+                'deletedAt' => date('Y-m-d H:i:s'),
+                'size' => filesize($fullPath)
+            ];
+            
+            $metaPath = $this->trashDir . '/' . $trashName . '.meta';
+            file_put_contents($metaPath, json_encode($metaData, JSON_PRETTY_PRINT));
+            
+            error_log("Code Editor - Trash details:");
+            error_log("- Original path: " . $relativePath);
+            error_log("- Trash name: " . $trashName);
+            error_log("- Meta file: " . $metaPath);
+            
+            // Datei in Trash verschieben
+            if (rename($fullPath, $trashPath)) {
+                error_log("Code Editor - File moved to trash successfully: " . $trashName);
+                return [
+                    'success' => true, 
+                    'message' => 'File moved to trash successfully',
+                    'trashFile' => $trashName
+                ];
+            } else {
+                error_log("Code Editor - Failed to move file to trash");
+                return ['success' => false, 'error' => 'Failed to move file to trash'];
+            }
+        } catch (Exception $e) {
+            error_log("Code Editor - Delete failed: " . $e->getMessage());
+            return ['success' => false, 'error' => 'Delete failed: ' . $e->getMessage()];
+        }
+    }
+
+    /**
+     * Listet alle Dateien im Trash auf
+     */
+    private function listTrash(): array
+    {
+        $trashFiles = [];
+        $files = glob($this->trashDir . '/*.trash');
+        
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                $fileName = basename($file);
+                $metaFile = $file . '.meta';
+                
+                // Metadaten laden falls vorhanden
+                if (file_exists($metaFile)) {
+                    $metaData = json_decode(file_get_contents($metaFile), true);
+                    $originalPath = $metaData['originalPath'] ?? 'Unknown path';
+                    $deletedAt = $metaData['deletedAt'] ?? date('d.m.Y H:i:s', filemtime($file));
+                } else {
+                    // Fallback: Versuche Pfad aus Dateiname zu rekonstruieren (alte Methode)
+                    $parts = explode('_', $fileName, 4);
+                    if (count($parts) >= 4) {
+                        $originalPath = str_replace('_', '/', $parts[3]);
+                        $originalPath = str_replace('.trash', '', $originalPath);
+                    } else {
+                        $originalPath = 'Unknown path (legacy)';
+                    }
+                    $deletedAt = date('d.m.Y H:i:s', filemtime($file));
+                }
+                
+                $trashFiles[] = [
+                    'name' => $fileName,
+                    'originalPath' => $originalPath,
+                    'size' => $this->formatBytes(filesize($file)),
+                    'deleted' => $deletedAt
+                ];
+            }
+        }
+        
+        // Sortieren nach Löschdatum (neueste zuerst)
+        usort($trashFiles, function($a, $b) {
+            return strcmp($b['deleted'], $a['deleted']);
+        });
+        
+        return ['success' => true, 'data' => $trashFiles];
+    }
+
+    /**
+     * Stellt eine Datei aus dem Trash wieder her
+     */
+    private function restoreFromTrash(string $trashName): array
+    {
+        $trashPath = $this->trashDir . '/' . $trashName;
+        $metaPath = $trashPath . '.meta';
+        
+        if (!file_exists($trashPath)) {
+            return ['success' => false, 'error' => 'Trash file not found'];
+        }
+        
+        // Originalen Pfad aus Metadaten lesen
+        if (file_exists($metaPath)) {
+            $metaData = json_decode(file_get_contents($metaPath), true);
+            $originalPath = $metaData['originalPath'] ?? null;
+            $originalFullPath = $metaData['originalFullPath'] ?? null;
+        } else {
+            // Fallback: Versuche Pfad aus Dateiname zu rekonstruieren
+            $parts = explode('_', $trashName, 4);
+            if (count($parts) < 4) {
+                return ['success' => false, 'error' => 'Invalid trash filename and no metadata'];
+            }
+            
+            $originalPath = str_replace('_', '/', $parts[3]);
+            $originalPath = str_replace('.trash', '', $originalPath);
+            $originalFullPath = rex_path::base() . $originalPath;
+        }
+        
+        if (!$originalPath) {
+            return ['success' => false, 'error' => 'Could not determine original path'];
+        }
+        
+        $fullPath = $originalFullPath ?: (rex_path::base() . $originalPath);
+        
+        // Prüfen ob Zieldatei bereits existiert
+        if (file_exists($fullPath)) {
+            return ['success' => false, 'error' => 'Target file already exists: ' . $originalPath];
+        }
+        
+        // Zielverzeichnis erstellen falls nötig
+        $targetDir = dirname($fullPath);
+        if (!is_dir($targetDir)) {
+            rex_dir::create($targetDir);
+        }
+        
+        if (rename($trashPath, $fullPath)) {
+            // Metadaten-Datei auch löschen
+            if (file_exists($metaPath)) {
+                unlink($metaPath);
+            }
+            
+            return [
+                'success' => true, 
+                'message' => 'File restored from trash successfully',
+                'restoredPath' => $originalPath
+            ];
+        } else {
+            return ['success' => false, 'error' => 'Failed to restore file from trash'];
+        }
+    }
+
+    /**
+     * Löscht eine Datei endgültig aus dem Trash
+     */
+    private function deleteFromTrash(string $trashName): array
+    {
+        $trashPath = $this->trashDir . '/' . $trashName;
+        $metaPath = $trashPath . '.meta';
+        
+        if (!file_exists($trashPath)) {
+            return ['success' => false, 'error' => 'Trash file not found'];
+        }
+        
+        $success = true;
+        
+        // Trash-Datei löschen
+        if (!unlink($trashPath)) {
+            $success = false;
+        }
+        
+        // Metadaten-Datei auch löschen
+        if (file_exists($metaPath) && !unlink($metaPath)) {
+            $success = false;
+        }
+        
+        if ($success) {
+            return ['success' => true, 'message' => 'File permanently deleted from trash'];
+        } else {
+            return ['success' => false, 'error' => 'Failed to delete file from trash completely'];
+        }
+    }
+
+    /**
+     * Leert den gesamten Trash
+     */
+    private function emptyTrash(): array
+    {
+        error_log("Code Editor - Empty trash started");
+        error_log("- Trash directory: " . $this->trashDir);
+        error_log("- Directory exists: " . (is_dir($this->trashDir) ? 'yes' : 'no'));
+        
+        if (!is_dir($this->trashDir)) {
+            error_log("Code Editor - Trash directory does not exist");
+            return ['success' => false, 'error' => 'Trash directory does not exist'];
+        }
+        
+        $files = glob($this->trashDir . '/*.trash');
+        $metaFiles = glob($this->trashDir . '/*.meta');
+        $deletedCount = 0;
+        $totalFiles = count($files);
+        
+        error_log("Code Editor - Found " . $totalFiles . " trash files and " . count($metaFiles) . " meta files");
+        
+        // Trash-Dateien löschen
+        foreach ($files as $file) {
+            if (is_file($file)) {
+                $fileName = basename($file);
+                
+                error_log("Code Editor - Deleting trash file: " . $fileName);
+                
+                if (unlink($file)) {
+                    $deletedCount++;
+                    error_log("Code Editor - Successfully deleted: " . $fileName);
+                } else {
+                    error_log("Code Editor - Failed to delete: " . $fileName);
+                }
+            }
+        }
+        
+        // Meta-Dateien löschen
+        foreach ($metaFiles as $metaFile) {
+            if (is_file($metaFile)) {
+                $fileName = basename($metaFile);
+                error_log("Code Editor - Deleting meta file: " . $fileName);
+                
+                if (!unlink($metaFile)) {
+                    error_log("Code Editor - Failed to delete meta file: " . $fileName);
+                }
+            }
+        }
+        
+        error_log("Code Editor - Empty trash completed: " . $deletedCount . " of " . $totalFiles . " files deleted");
+        
+        return [
+            'success' => true, 
+            'message' => $deletedCount . ' von ' . $totalFiles . ' Dateien wurden endgültig gelöscht'
+        ];
     }
 }

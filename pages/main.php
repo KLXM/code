@@ -1,9 +1,28 @@
 <?php
 
+use KLXM\Code\CodeSelfDestruct;
+
 // Nur für Admins verfügbar
 if (!rex::getUser()->isAdmin()) {
     echo rex_view::error('Nur für Administratoren verfügbar');
     return;
+}
+
+// Selbstdeaktivierungs-System prüfen (still/silent)
+$selfDestruct = new CodeSelfDestruct();
+$selfDestruct->initialize();
+$destructStatus = $selfDestruct->checkAndExecute();
+
+// Bei Deaktivierung zum Backend weiterleiten ohne Nachricht
+if ($destructStatus['status'] === 'deactivated') {
+    header('Location: ' . rex_url::backendController());
+    exit;
+}
+
+// Bei force_inactive auch weiterleiten
+if (rex_config::get('code', 'force_inactive', false)) {
+    header('Location: ' . rex_url::backendController());
+    exit;
 }
 
 // Hauptcontainer im NextCloud-Stil

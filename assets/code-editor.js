@@ -120,7 +120,7 @@ class CodeFileBrowser {
         // Fallback: Lade Monaco Loader erst
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
-            script.src = rex.backend_url + 'assets/addons/code/monaco-loader.js';
+            script.src = '/assets/addons/code/monaco-loader.js';
             
             script.onload = async () => {
                 try {
@@ -140,23 +140,37 @@ class CodeFileBrowser {
         });
     }
     
-    // CDN Fallback für Notfälle
+    // CDN Fallback für Notfälle - Vereinfacht ohne require.js
     async loadMonacoEditorCDN() {
         console.log('Loading Monaco Editor from CDN (fallback)...');
+        
+        // CSS laden
+        const cssLink = document.createElement('link');
+        cssLink.rel = 'stylesheet';
+        cssLink.href = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/editor/editor.main.css';
+        document.head.appendChild(cssLink);
         
         return new Promise((resolve, reject) => {
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js';
             
             script.onload = () => {
-                require.config({ 
-                    paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } 
-                });
-                
-                require(['vs/editor/editor.main'], () => {
-                    console.log('Monaco Editor loaded from CDN');
-                    resolve();
-                });
+                if (typeof require !== 'undefined') {
+                    require.config({ 
+                        paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } 
+                    });
+                    
+                    require(['vs/editor/editor.main'], () => {
+                        console.log('Monaco Editor loaded from CDN');
+                        resolve();
+                    }, (error) => {
+                        console.error('Monaco Editor CDN load failed:', error);
+                        reject(new Error('Failed to load Monaco Editor from CDN'));
+                    });
+                } else {
+                    console.error('require.js not available from CDN loader');
+                    reject(new Error('require.js not available'));
+                }
             };
             
             script.onerror = () => {
@@ -219,6 +233,65 @@ class CodeFileBrowser {
         }
     }
 
+    /**
+     * Prüft ob eine Datei geschützt ist und nicht gelöscht werden darf
+     */
+    isProtectedFile(filePath) {
+        const fileName = filePath.split('/').pop(); // Dateiname extrahieren
+        
+        // Liste der geschützten Dateien (muss mit PHP-Code synchron sein)
+        const protectedFiles = [
+            '.htaccess',
+            'index.php',
+            'config.yml',
+            'config.yaml', 
+            '.env',
+            '.env.local',
+            '.env.production',
+            'composer.json',
+            'composer.lock',
+            'package.json',
+            'package-lock.json',
+            'yarn.lock',
+            'boot.php',
+            'install.php',
+            'console.php',
+            'console',
+            'AppPathProvider.php',
+            'README.md',
+            'LICENSE',
+            'robots.txt',
+            'sitemap.xml',
+            'web.config'
+        ];
+        
+        // Direkte Dateinamen-Überprüfung
+        if (protectedFiles.includes(fileName)) {
+            return true;
+        }
+        
+        // Pattern-basierte Überprüfung
+        const protectedPatterns = [
+            /^\.htaccess$/,           // .htaccess-Dateien
+            /^index\.php$/,           // index.php-Dateien
+            /^config\.(yml|yaml)$/,   // config.yml/yaml-Dateien
+            /^\.env/,                 // Alle .env-Dateien
+            /^boot\.php$/,            // boot.php-Dateien
+            /^install\.php$/,         // install.php-Dateien
+            /composer\.(json|lock)$/, // composer-Dateien
+            /package(-lock)?\.json$/, // npm/node-Dateien
+            /yarn\.lock$/,            // yarn-Dateien
+        ];
+        
+        for (const pattern of protectedPatterns) {
+            if (pattern.test(fileName)) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
     renderFileList(files) {
         const fileList = $('#file-list');
         
@@ -254,9 +327,19 @@ class CodeFileBrowser {
                     <td>${item.modified || '-'}</td>
                     <td>
                         ${item.type === 'file' && this.isEditableFile(item.extension) ? 
-                            `<button class="btn btn-xs btn-primary edit-file-btn" data-path="${item.path}" title="Bearbeiten">
-                                <i class="rex-icon fa-edit"></i>
-                            </button>` : ''
+                            `<div class="btn-group" role="group">
+                                <button class="btn btn-xs btn-primary edit-file-btn" data-path="${item.path}" title="Bearbeiten">
+                                    <i class="rex-icon fa-edit"></i>
+                                </button>
+                                ${!this.isProtectedFile(item.path) ? 
+                                    `<button class="btn btn-xs btn-danger delete-file-btn" data-path="${item.path}" title="Löschen">
+                                        <i class="rex-icon fa-trash"></i>
+                                    </button>` : 
+                                    `<button class="btn btn-xs btn-secondary" disabled title="Systemdatei - kann nicht gelöscht werden">
+                                        <i class="rex-icon fa-lock"></i>
+                                    </button>`
+                                }
+                            </div>` : ''
                         }
                     </td>
                 </tr>
@@ -281,6 +364,13 @@ class CodeFileBrowser {
             e.stopPropagation();
             const filePath = $(e.currentTarget).data('path');
             this.openFile(filePath);
+        });
+        
+        // File Delete Buttons
+        $('.delete-file-btn').off('click').on('click', (e) => {
+            e.stopPropagation();
+            const filePath = $(e.currentTarget).data('path');
+            this.deleteFile(filePath);
         });
         
         // File Double Click
@@ -741,6 +831,52 @@ class CodeFileBrowser {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    async deleteFile(filePath) {
+        console.log('Deleting file:', filePath);
+        
+        if (!confirm(`Möchten Sie die Datei "${filePath}" wirklich löschen? Sie wird in den Papierkorb verschoben.`)) {
+            return;
+        }
+        
+        try {
+            const cacheBuster = Date.now();
+            const response = await fetch(`index.php?page=code/main&code_api=1&action=delete&_cb=${cacheBuster}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                body: `file=${encodeURIComponent(filePath)}`,
+                cache: 'no-cache'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log('Delete response:', data);
+
+            if (data.success) {
+                alert(data.message || 'Datei erfolgreich in den Papierkorb verschoben!');
+                // Dateiliste aktualisieren
+                this.loadFileList(this.currentPath);
+                
+                // Editor schließen falls die gelöschte Datei geöffnet war
+                if (this.currentFile === filePath) {
+                    this.closeEditor();
+                }
+            } else {
+                throw new Error(data.error || 'Fehler beim Löschen der Datei');
+            }
+
+        } catch (error) {
+            console.error('Error deleting file:', error);
+            alert('Fehler beim Löschen der Datei: ' + error.message);
+        }
     }
 }
 
@@ -1282,7 +1418,245 @@ class CodeBackupManager {
     }
 }
 
+/**
+ * Trash Manager Class
+ */
+class CodeTrashManager {
+    constructor() {
+        console.log('CodeTrashManager initialized');
+    }
+
+    init() {
+        this.bindEvents();
+        this.loadTrash();
+    }
+
+    bindEvents() {
+        // Empty Trash Button
+        $('#btnEmptyTrash').on('click', () => {
+            if (confirm('Möchten Sie den Papierkorb wirklich leeren? Diese Aktion kann nicht rückgängig gemacht werden!')) {
+                this.emptyTrash();
+            }
+        });
+    }
+
+    async loadTrash() {
+        console.log('Loading trash files...');
+        
+        try {
+            const cacheBuster = Date.now();
+            const response = await fetch(`index.php?page=code/backups&code_api=1&action=trash-list&_cb=${cacheBuster}`, {
+                method: 'GET',
+                cache: 'no-cache',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log('Trash response:', data);
+
+            if (data.success) {
+                this.renderTrashList(data.data);
+            } else {
+                throw new Error(data.error || 'Fehler beim Laden des Papierkorbs');
+            }
+
+        } catch (error) {
+            console.error('Error loading trash:', error);
+            this.showError('Fehler beim Laden des Papierkorbs: ' + error.message);
+        }
+    }
+
+    renderTrashList(trashFiles) {
+        const trashList = $('#trashList');
+        
+        if (!trashFiles || trashFiles.length === 0) {
+            trashList.html(`
+                <tr>
+                    <td colspan="4" class="text-center text-muted">
+                        <i class="rex-icon fa-info-circle"></i> Papierkorb ist leer
+                    </td>
+                </tr>
+            `);
+            return;
+        }
+
+        let html = '';
+        
+        trashFiles.forEach(item => {
+            html += `
+                <tr>
+                    <td>
+                        <code>${this.escapeHtml(item.originalPath)}</code>
+                    </td>
+                    <td class="file-size">${item.size}</td>
+                    <td>${item.deleted}</td>
+                    <td class="trash-actions">
+                        <button class="btn btn-success btn-xs restore-trash-btn" data-trash="${item.name}" title="Wiederherstellen">
+                            <i class="rex-icon fa-undo"></i> Wiederherstellen
+                        </button>
+                        <button class="btn btn-danger btn-xs delete-trash-btn" data-trash="${item.name}" title="Endgültig löschen">
+                            <i class="rex-icon fa-times"></i> Löschen
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+        
+        trashList.html(html);
+        
+        // Event Listeners für Trash-Aktionen
+        this.bindTrashEvents();
+    }
+
+    bindTrashEvents() {
+        // Restore Buttons
+        $('.restore-trash-btn').off('click').on('click', (e) => {
+            const trashName = $(e.currentTarget).data('trash');
+            this.restoreFromTrash(trashName);
+        });
+        
+        // Delete Buttons
+        $('.delete-trash-btn').off('click').on('click', (e) => {
+            const trashName = $(e.currentTarget).data('trash');
+            if (confirm('Datei endgültig löschen? Diese Aktion kann nicht rückgängig gemacht werden!')) {
+                this.deleteFromTrash(trashName);
+            }
+        });
+    }
+
+    async restoreFromTrash(trashName) {
+        console.log('Restoring from trash:', trashName);
+        
+        try {
+            const cacheBuster = Date.now();
+            const response = await fetch(`index.php?page=code/backups&code_api=1&action=trash-restore&_cb=${cacheBuster}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                body: `trash=${encodeURIComponent(trashName)}`,
+                cache: 'no-cache'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log('Restore response:', data);
+
+            if (data.success) {
+                alert(data.message || 'Datei erfolgreich wiederhergestellt!');
+                this.loadTrash(); // Liste aktualisieren
+            } else {
+                throw new Error(data.error || 'Fehler beim Wiederherstellen der Datei');
+            }
+
+        } catch (error) {
+            console.error('Error restoring from trash:', error);
+            alert('Fehler beim Wiederherstellen der Datei: ' + error.message);
+        }
+    }
+
+    async deleteFromTrash(trashName) {
+        console.log('Deleting from trash:', trashName);
+        
+        try {
+            const cacheBuster = Date.now();
+            const response = await fetch(`index.php?page=code/backups&code_api=1&action=trash-delete&_cb=${cacheBuster}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                body: `trash=${encodeURIComponent(trashName)}`,
+                cache: 'no-cache'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log('Delete trash response:', data);
+
+            if (data.success) {
+                alert(data.message || 'Datei endgültig gelöscht!');
+                this.loadTrash(); // Liste aktualisieren
+            } else {
+                throw new Error(data.error || 'Fehler beim Löschen der Datei');
+            }
+
+        } catch (error) {
+            console.error('Error deleting from trash:', error);
+            alert('Fehler beim Löschen der Datei: ' + error.message);
+        }
+    }
+
+    async emptyTrash() {
+        console.log('Emptying trash...');
+        
+        try {
+            const cacheBuster = Date.now();
+            const response = await fetch(`index.php?page=code/backups&code_api=1&action=trash-empty&_cb=${cacheBuster}`, {
+                method: 'POST',
+                cache: 'no-cache',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            console.log('Empty trash response:', data);
+
+            if (data.success) {
+                alert(data.message || 'Papierkorb erfolgreich geleert!');
+                this.loadTrash(); // Liste aktualisieren
+            } else {
+                throw new Error(data.error || 'Fehler beim Leeren des Papierkorbs');
+            }
+
+        } catch (error) {
+            console.error('Error emptying trash:', error);
+            alert('Fehler beim Leeren des Papierkorbs: ' + error.message);
+        }
+    }
+
+    showError(message) {
+        const trashList = $('#trashList');
+        trashList.html(`
+            <tr>
+                <td colspan="4" class="alert alert-danger">
+                    <i class="rex-icon fa-exclamation-triangle"></i> ${message}
+                </td>
+            </tr>
+        `);
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+}
+
 // Global verfügbar machen
 window.CodeFileBrowser = CodeFileBrowser;
 window.CodeFileSearch = CodeFileSearch;
 window.CodeBackupManager = CodeBackupManager;
+window.CodeTrashManager = CodeTrashManager;
