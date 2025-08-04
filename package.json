@@ -1,6 +1,6 @@
 {
   "name": "redaxo-code-editor",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "REDAXO Code Editor AddOn with local Monaco Editor",
   "main": "build.js",
   "scripts": {
