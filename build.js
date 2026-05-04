@@ -1,153 +1,117 @@
 const fs = require('fs-extra');
 const path = require('path');
+const esbuild = require('esbuild');
 
 async function buildMonacoEditor() {
-    console.log('🚀 Building Monaco Editor für REDAXO Code Editor AddOn...');
-    
-    const monacoSrcPath = path.join(__dirname, 'node_modules', 'monaco-editor', 'min');
-    const monacoDestPath = path.join(__dirname, 'assets', 'monaco-editor');
-    
-    try {
-        // Monaco Editor Verzeichnis erstellen
-        await fs.ensureDir(monacoDestPath);
-        
-        // Monaco Editor Dateien kopieren
-        console.log('📁 Kopiere Monaco Editor Dateien...');
-        await fs.copy(monacoSrcPath, monacoDestPath, {
-            overwrite: true,
-            filter: (src, dest) => {
-                // Nur notwendige Dateien kopieren
-                const fileName = path.basename(src);
-                const isDirectory = fs.statSync(src).isDirectory();
-                
-                // Verzeichnisse durchlassen
-                if (isDirectory) return true;
-                
-                // Wichtige Dateien
-                if (fileName.includes('loader') || 
-                    fileName.includes('editor.main') ||
-                    src.includes('/vs/')) {
-                    return true;
-                }
-                return false;
-            }
-        });
-        
-        // Monaco Editor Wrapper erstellen
-        console.log('⚙️ Erstelle Monaco Editor Wrapper...');
-        const wrapperContent = `
-/**
- * Monaco Editor Loader für REDAXO Code Editor
- * Lokale Version: ${getMonacoVersion()}
- */
+    console.log('🚀 Building Monaco Editor für REDAXO Code Editor AddOn (ESM)...');
 
+    const destDir = path.join(__dirname, 'assets', 'monaco-editor');
+    const workersDir = path.join(destDir, 'workers');
+
+    await fs.ensureDir(destDir);
+    await fs.ensureDir(workersDir);
+
+    const version = getMonacoVersion();
+
+    // --- Haupt-Bundle (IIFE, enthält vollständige Monaco-API) ---
+    console.log('📦 Baue monaco.bundle.js ...');
+    await esbuild.build({
+        entryPoints: [path.join(__dirname, 'src/monaco-entry.js')],
+        bundle: true,
+        outfile: path.join(destDir, 'monaco.bundle.js'),
+        format: 'iife',
+        minify: true,
+        sourcemap: false,
+        loader: {
+            '.ttf': 'file',
+            '.svg': 'file',
+            '.png': 'file',
+        },
+        // Schriftarten neben der JS-Datei ablegen
+        assetNames: 'fonts/[name]-[hash]',
+    });
+
+    // --- Web Workers ---
+    console.log('⚙️  Baue Web Worker Bundles ...');
+    await esbuild.build({
+        entryPoints: {
+            'editor.worker': path.join(__dirname, 'src/workers/editor.worker.js'),
+            'json.worker':   path.join(__dirname, 'src/workers/json.worker.js'),
+            'css.worker':    path.join(__dirname, 'src/workers/css.worker.js'),
+            'html.worker':   path.join(__dirname, 'src/workers/html.worker.js'),
+            'ts.worker':     path.join(__dirname, 'src/workers/ts.worker.js'),
+        },
+        bundle: true,
+        outdir: workersDir,
+        format: 'iife',
+        minify: true,
+        sourcemap: false,
+    });
+
+    // --- Monaco Loader generieren ---
+    console.log('⚙️  Erstelle monaco-loader.js ...');
+    const loaderContent = `/**
+ * Monaco Editor Loader für REDAXO Code Editor
+ * Version: ${version}
+ * Build: ESM (esbuild)
+ */
 class MonacoLoader {
     static async load() {
-        if (typeof monaco !== 'undefined') {
+        if (typeof window.monaco !== 'undefined') {
             return Promise.resolve();
         }
-        
-        console.log('Loading Monaco Editor (local version)...');
-        
+        const basePath = (rex && rex.code_monaco_assets_url) ? rex.code_monaco_assets_url : '';
+        window.__monacoWorkersPath = basePath + '/workers';
         return new Promise((resolve, reject) => {
-            // Lokalen Pfad zum Monaco Editor
-            const basePath = rex.backend_url + 'assets/addons/code/monaco-editor';
-            
             const script = document.createElement('script');
-            script.src = basePath + '/vs/loader.js';
-            
+            script.src = basePath + '/monaco.bundle.js';
             script.onload = () => {
-                require.config({ 
-                    paths: { vs: basePath + '/vs' },
-                    'vs/nls': {
-                        availableLanguages: {
-                            '*': 'de'
-                        }
-                    }
-                });
-                
-                require(['vs/editor/editor.main'], () => {
-                    console.log('Monaco Editor loaded successfully (local)');
+                if (typeof window.monaco !== 'undefined') {
                     resolve();
-                });
+                } else {
+                    reject(new Error('monaco not defined after bundle load'));
+                }
             };
-            
-            script.onerror = () => {
-                console.error('Failed to load Monaco Editor (local)');
-                reject(new Error('Failed to load Monaco Editor'));
-            };
-            
+            script.onerror = () => reject(new Error('Failed to load Monaco Editor bundle'));
             document.head.appendChild(script);
         });
     }
-    
-    static getVersion() {
-        return '${getMonacoVersion()}';
-    }
+    static getVersion() { return '${version}'; }
 }
-
-// Global verfügbar machen
 window.MonacoLoader = MonacoLoader;
 `;
-        
-        await fs.writeFile(path.join(__dirname, 'assets', 'monaco-loader.js'), wrapperContent);
-        
-        // Version Info erstellen
-        const versionInfo = {
-            version: getMonacoVersion(),
-            buildDate: new Date().toISOString(),
-            files: await getFileList(monacoDestPath)
-        };
-        
-        await fs.writeFile(
-            path.join(__dirname, 'assets', 'monaco-version.json'), 
-            JSON.stringify(versionInfo, null, 2)
-        );
-        
-        console.log('✅ Monaco Editor Build erfolgreich!');
-        console.log(`📦 Version: ${getMonacoVersion()}`);
-        console.log(`📁 Ziel: ${monacoDestPath}`);
-        
-        // Usage Instructions
-        console.log('\n📋 USAGE:');
-        console.log('1. npm run update-monaco  - Monaco Editor aktualisieren');
-        console.log('2. npm run build         - Nur Build ohne Update');
-        console.log('3. Ersetze CDN-Load mit: await MonacoLoader.load()');
-        
-    } catch (error) {
-        console.error('❌ Build Fehler:', error);
-        process.exit(1);
-    }
+    await fs.writeFile(path.join(__dirname, 'assets', 'monaco-loader.js'), loaderContent);
+
+    // --- Version JSON ---
+    await fs.writeJson(path.join(destDir, 'monaco-version.json'), {
+        version,
+        buildDate: new Date().toISOString(),
+        buildTool: 'esbuild',
+    }, { spaces: 2 });
+
+    console.log('✅ Monaco Editor Build erfolgreich!');
+    console.log(`📦 Version: ${version}`);
+    console.log(`📁 Ziel: ${destDir}`);
+    console.log('\n📋 USAGE:');
+    console.log('1. npm run update-monaco  - Monaco Editor aktualisieren');
+    console.log('2. npm run build         - Nur Build ohne Update');
+    console.log('3. Loader: await MonacoLoader.load()');
 }
 
 function getMonacoVersion() {
     try {
-        const packageJson = require('./node_modules/monaco-editor/package.json');
-        return packageJson.version;
-    } catch (error) {
+        return require('./node_modules/monaco-editor/package.json').version;
+    } catch {
         return 'unknown';
     }
 }
 
-async function getFileList(dir) {
-    const files = [];
-    const items = await fs.readdir(dir, { withFileTypes: true });
-    
-    for (const item of items) {
-        if (item.isDirectory()) {
-            const subFiles = await getFileList(path.join(dir, item.name));
-            files.push(...subFiles.map(f => path.join(item.name, f)));
-        } else {
-            files.push(item.name);
-        }
-    }
-    
-    return files;
-}
-
-// Build ausführen
 if (require.main === module) {
-    buildMonacoEditor().catch(console.error);
+    buildMonacoEditor().catch((err) => {
+        console.error('❌ Build Fehler:', err);
+        process.exit(1);
+    });
 }
 
 module.exports = { buildMonacoEditor };
+

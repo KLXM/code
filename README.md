@@ -17,6 +17,15 @@ Modern code editing experience for REDAXO CMS with Monaco Editor (VS Code) integ
 - **NextCloud-style interface** for file management
 - **Live full-text search** across all project files
 - **Line navigation** - jump directly to search results
+- **Search excludes cache paths** (e.g. REDAXO cache)
+- **Compact search excerpts** - shorter and easier to scan
+- **Permission metadata** in file table:
+    - Owner/Group (`owner:group`)
+    - Permissions octal + symbolic (`0755 (drwxr-xr-x)`)
+- **Permission fixer** button (`Rechte fixen`):
+    - Sets folders to `0755`
+    - Sets files to `0644`
+    - Optional recursive mode
 - **Admin access only** - restricted to administrators
 - **Auto-deactivation** - deactivates after 2 days of inactivity
 
@@ -34,7 +43,15 @@ Modern code editing experience for REDAXO CMS with Monaco Editor (VS Code) integ
 - **Word Wrap** - toggle line wrapping
 - **Minimap** - code overview panel
 - **Whitespace** - show/hide spaces and tabs
+- **Bracket Pair Colorization** - matching bracket pairs are colorized
+- **Indentation Guides** - vertical indent + bracket guides
+- **Auto-Closing Brackets/Quotes** - enabled by default
+- **Inlay Hints** - enabled when language support is available
 - All settings saved per user via localStorage
+
+### 🌗 **Theme Behavior (Light/Dark/Auto)**
+- Theme handling was improved for File Browser and Backup & Trash views.
+- Dedicated dark-mode and auto-dark-mode overrides prevent bright table/tab surfaces in dark contexts.
 
 ## Auto-Deactivation System
 
@@ -171,10 +188,20 @@ The Monaco Editor automatically replaces `.rex-code` textareas in:
 4. Edit and save (automatic backup created)
 5. Use search for quick file finding
 
+### Permissions & Ownership
+In **Code → File Browser** you can inspect and fix file permissions:
+
+1. Check columns **Besitzer** and **Rechte** in the table.
+2. Click **Rechte fixen** in the toolbar.
+3. Choose mode:
+    - `r` = recursive (includes subfolders)
+    - `n` = current folder only
+4. Review the resulting stats (processed/changed/failed).
+
 ### Search
 1. Go to **Code → Code Search**
 2. Enter search term (minimum 2 characters)
-3. Results show filename, line number, context
+3. Results show filename, line number, and compact context excerpt
 4. Click result to open file at specific line
 
 ### API (api AddOn)

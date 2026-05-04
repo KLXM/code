@@ -166,6 +166,16 @@ $content = '
 </div>
 
 <style>
+:root {
+    --code-tabs-active-border: #fff;
+    --code-surface: #fff;
+    --code-surface-2: #f7f9fc;
+    --code-surface-3: #eef2f7;
+    --code-border: #ddd;
+    --code-table-stripe: #f9f9f9;
+    --code-text-muted: #666;
+}
+
 .backup-actions .btn,
 .trash-actions .btn {
     margin-right: 5px;
@@ -184,8 +194,98 @@ $content = '
     border-top-right-radius: 0;
 }
 
+.code-container .panel,
+.code-container .panel-body,
+.code-container .panel-heading,
+.code-container .tab-content,
+.code-container .tab-pane {
+    background-color: var(--code-surface) !important;
+}
+
+.code-container .panel-heading {
+    background-color: var(--code-surface-2) !important;
+}
+
+.code-container .nav-tabs > li > a {
+    background-color: var(--code-surface-2) !important;
+    border-color: var(--code-border) !important;
+    color: var(--code-text-muted) !important;
+}
+
+.code-container .nav-tabs > li > a:hover,
+.code-container .nav-tabs > li > a:focus {
+    background-color: var(--code-surface-3) !important;
+    border-color: var(--code-border) !important;
+    color: var(--code-text-muted) !important;
+}
+
+.code-container .nav-tabs > li.active > a,
+.code-container .nav-tabs > li.active > a:hover,
+.code-container .nav-tabs > li.active > a:focus {
+    background-color: var(--code-surface-3) !important;
+    border-color: var(--code-border) !important;
+    border-bottom-color: var(--code-tabs-active-border) !important;
+    color: var(--code-text-muted) !important;
+}
+
 .nav-tabs > li.active > a {
-    border-bottom-color: #fff;
+    border-bottom-color: var(--code-tabs-active-border);
+}
+
+.code-container .panel,
+.code-container .panel-body,
+.code-container .panel-heading,
+.code-container .table,
+.code-container .table > thead > tr > th,
+.code-container .table > tbody > tr > td {
+    border-color: var(--code-border) !important;
+}
+
+.code-container .table-striped > tbody > tr:nth-of-type(odd) {
+    background-color: var(--code-table-stripe);
+}
+
+.code-container .table > thead > tr > th {
+    background-color: var(--code-surface-3) !important;
+    color: var(--code-text-muted) !important;
+}
+
+body.rex-theme-dark {
+    --code-tabs-active-border: #263545;
+    --code-surface: #1f2c39;
+    --code-surface-2: #233241;
+    --code-surface-3: #304152;
+    --code-border: #3a4b5d;
+    --code-table-stripe: #233241;
+    --code-text-muted: #b6c4d3;
+}
+
+@media (prefers-color-scheme: dark) {
+    body.rex-has-theme:not(.rex-theme-light) {
+        --code-tabs-active-border: #263545;
+        --code-surface: #1f2c39;
+        --code-surface-2: #233241;
+        --code-surface-3: #304152;
+        --code-border: #3a4b5d;
+        --code-table-stripe: #233241;
+        --code-text-muted: #b6c4d3;
+    }
+}
+
+body.rex-theme-dark .code-container .nav-tabs > li > a,
+body.rex-theme-dark .code-container .panel-title,
+body.rex-theme-dark .code-container .table > thead > tr > th,
+body.rex-theme-dark .code-container .table > tbody > tr > td {
+    color: var(--code-text-muted) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    body.rex-has-theme:not(.rex-theme-light) .code-container .nav-tabs > li > a,
+    body.rex-has-theme:not(.rex-theme-light) .code-container .panel-title,
+    body.rex-has-theme:not(.rex-theme-light) .code-container .table > thead > tr > th,
+    body.rex-has-theme:not(.rex-theme-light) .code-container .table > tbody > tr > td {
+        color: var(--code-text-muted) !important;
+    }
 }
 </style>';
 

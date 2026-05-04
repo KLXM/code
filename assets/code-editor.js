@@ -70,6 +70,10 @@ class CodeFileBrowser {
             this.clearBrowserCache();
             location.reload(true); // Hard reload
         });
+
+        $('#btn-fix-permissions').on('click', () => {
+            this.fixPermissions();
+        });
         
         $('#btn-home').on('click', () => {
             this.loadFileList('');
@@ -96,7 +100,7 @@ class CodeFileBrowser {
         $('#btn-close-editor, #btn-modal-close').on('click', () => {
             this.closeEditor();
         });
-        
+
         $('#btn-modal-fullscreen').on('click', () => {
             this.toggleFullscreen();
         });
@@ -153,22 +157,15 @@ class CodeFileBrowser {
         }
         
         // Modal Events für Layout-Refresh
-        $('#code-editor-modal').on('shown.bs.modal', () => {
+        $('#code-editor-modal').off('shown.bs.modal.code').on('shown.bs.modal.code', () => {
             if (this.monacoEditor) {
                 this.monacoEditor.layout();
                 this.monacoEditor.focus();
             }
         });
 
-        // Verhindern dass Modal durch Escape geschlossen wird wenn Änderungen da sind
-        $('#code-editor-modal').on('hide.bs.modal', (e) => {
-            if (this.isFileModified) {
-                if (!confirm('Es gibt ungespeicherte Änderungen. Trotzdem schließen?')) {
-                    e.preventDefault();
-                    return false;
-                }
-            }
-            // Wenn geschlossen wird, cleanup
+        // Cleanup bei erfolgreichem Schließen
+        $('#code-editor-modal').off('hidden.bs.modal.code').on('hidden.bs.modal.code', () => {
             this.currentFile = null;
             this.setFileModified(false);
         });
@@ -218,7 +215,7 @@ class CodeFileBrowser {
             document.head.appendChild(script);
         });
     }
-    
+
     // CDN Code removed for security/privacy reasons
     
     defineREDAXOThemes() {
@@ -297,7 +294,151 @@ class CodeFileBrowser {
                 'scrollbarSlider.activeBackground': '#bdc3c7dd'
             }
         });
-        
+
+        // Bernstein 8-bit Theme – klassischer Phosphor-Bildschirm (Amber CRT)
+        monaco.editor.defineTheme('bernstein-8bit', {
+            base: 'vs-dark',
+            inherit: false,
+            rules: [
+                { token: '',           foreground: 'ffb000', background: '1a0f00' },
+                { token: 'comment',    foreground: '7a4f00', fontStyle: 'italic' },
+                { token: 'keyword',    foreground: 'ffd700', fontStyle: 'bold' },
+                { token: 'string',     foreground: 'ff8c00' },
+                { token: 'number',     foreground: 'ffcc44' },
+                { token: 'variable',   foreground: 'ffa500' },
+                { token: 'function',   foreground: 'ffd700' },
+                { token: 'type',       foreground: 'ffb000' },
+                { token: 'class',      foreground: 'ffc200', fontStyle: 'bold' },
+                { token: 'operator',   foreground: 'ff6600' },
+                { token: 'delimiter',  foreground: 'cc8800' },
+                { token: 'tag',        foreground: 'ffd700', fontStyle: 'bold' },
+                { token: 'attribute',  foreground: 'ffaa00' },
+            ],
+            colors: {
+                'editor.background':                    '#1a0f00',
+                'editor.foreground':                    '#ffb000',
+                'editorLineNumber.foreground':          '#7a4f00',
+                'editorLineNumber.activeForeground':    '#ffb000',
+                'editor.selectionBackground':           '#4d2e00',
+                'editor.lineHighlightBackground':       '#261500',
+                'editorCursor.foreground':              '#ffb000',
+                'editorCursor.background':              '#1a0f00',
+                'editorWhitespace.foreground':          '#3d2200',
+                'editorIndentGuide.background1':        '#3d2200',
+                'editorIndentGuide.activeBackground1':  '#7a4f00',
+                'editor.selectionHighlightBackground':  '#4d2e0055',
+                'editorBracketMatch.background':        '#4d2e0099',
+                'editorBracketMatch.border':            '#ffb000',
+                'editorWidget.background':              '#261500',
+                'editorWidget.foreground':              '#ffb000',
+                'editorWidget.border':                  '#7a4f00',
+                'input.background':                     '#261500',
+                'input.foreground':                     '#ffb000',
+                'input.border':                         '#7a4f00',
+                'scrollbarSlider.background':           '#4d2e0088',
+                'scrollbarSlider.hoverBackground':      '#7a4f00bb',
+                'scrollbarSlider.activeBackground':     '#7a4f00dd',
+                'statusBar.background':                 '#261500',
+                'statusBar.foreground':                 '#ffb000'
+            }
+        });
+
+        // AGK – Grüner Phosphor-Monitor (Green CRT)
+        monaco.editor.defineTheme('agk', {
+            base: 'vs-dark',
+            inherit: false,
+            rules: [
+                { token: '',           foreground: '33ff33', background: '001a00' },
+                { token: 'comment',    foreground: '1a6e1a', fontStyle: 'italic' },
+                { token: 'keyword',    foreground: '66ff66', fontStyle: 'bold' },
+                { token: 'string',     foreground: '00cc44' },
+                { token: 'number',     foreground: '99ff99' },
+                { token: 'variable',   foreground: '44dd44' },
+                { token: 'function',   foreground: '66ff66' },
+                { token: 'type',       foreground: '33ff33' },
+                { token: 'class',      foreground: '88ff88', fontStyle: 'bold' },
+                { token: 'operator',   foreground: '00aa22' },
+                { token: 'delimiter',  foreground: '228822' },
+                { token: 'tag',        foreground: '66ff66', fontStyle: 'bold' },
+                { token: 'attribute',  foreground: '44cc44' },
+            ],
+            colors: {
+                'editor.background':                    '#001a00',
+                'editor.foreground':                    '#33ff33',
+                'editorLineNumber.foreground':          '#1a6e1a',
+                'editorLineNumber.activeForeground':    '#33ff33',
+                'editor.selectionBackground':           '#004400',
+                'editor.lineHighlightBackground':       '#002200',
+                'editorCursor.foreground':              '#33ff33',
+                'editorCursor.background':              '#001a00',
+                'editorWhitespace.foreground':          '#003300',
+                'editorIndentGuide.background1':        '#003300',
+                'editorIndentGuide.activeBackground1':  '#1a6e1a',
+                'editor.selectionHighlightBackground':  '#00440055',
+                'editorBracketMatch.background':        '#00440099',
+                'editorBracketMatch.border':            '#33ff33',
+                'editorWidget.background':              '#002200',
+                'editorWidget.foreground':              '#33ff33',
+                'editorWidget.border':                  '#1a6e1a',
+                'input.background':                     '#002200',
+                'input.foreground':                     '#33ff33',
+                'input.border':                         '#1a6e1a',
+                'scrollbarSlider.background':           '#00440088',
+                'scrollbarSlider.hoverBackground':      '#1a6e1abb',
+                'scrollbarSlider.activeBackground':     '#1a6e1add',
+                'statusBar.background':                 '#002200',
+                'statusBar.foreground':                 '#33ff33'
+            }
+        });
+
+        // ST – Raumschiff-Terminal (LCARS-inspiriert: Orange/Lila/Blau auf Schwarz)
+        monaco.editor.defineTheme('st', {
+            base: 'vs-dark',
+            inherit: false,
+            rules: [
+                { token: '',           foreground: 'ff9900', background: '000000' },
+                { token: 'comment',    foreground: '664400', fontStyle: 'italic' },
+                { token: 'keyword',    foreground: 'cc88ff', fontStyle: 'bold' },
+                { token: 'string',     foreground: '66ccff' },
+                { token: 'number',     foreground: 'ffcc00' },
+                { token: 'variable',   foreground: 'ff6600' },
+                { token: 'function',   foreground: '99ccff' },
+                { token: 'type',       foreground: 'cc88ff' },
+                { token: 'class',      foreground: 'ffaa33', fontStyle: 'bold' },
+                { token: 'operator',   foreground: 'ff6600' },
+                { token: 'delimiter',  foreground: '996633' },
+                { token: 'tag',        foreground: 'cc88ff', fontStyle: 'bold' },
+                { token: 'attribute',  foreground: '66ccff' },
+            ],
+            colors: {
+                'editor.background':                    '#000000',
+                'editor.foreground':                    '#ff9900',
+                'editorLineNumber.foreground':          '#664400',
+                'editorLineNumber.activeForeground':    '#ffcc00',
+                'editor.selectionBackground':           '#331a00',
+                'editor.lineHighlightBackground':       '#190d00',
+                'editorCursor.foreground':              '#ffcc00',
+                'editorCursor.background':              '#000000',
+                'editorWhitespace.foreground':          '#331a00',
+                'editorIndentGuide.background1':        '#331a00',
+                'editorIndentGuide.activeBackground1':  '#664400',
+                'editor.selectionHighlightBackground':  '#331a0055',
+                'editorBracketMatch.background':        '#331a0099',
+                'editorBracketMatch.border':            '#cc88ff',
+                'editorWidget.background':              '#190d00',
+                'editorWidget.foreground':              '#ff9900',
+                'editorWidget.border':                  '#664400',
+                'input.background':                     '#190d00',
+                'input.foreground':                     '#ff9900',
+                'input.border':                         '#664400',
+                'scrollbarSlider.background':           '#33190088',
+                'scrollbarSlider.hoverBackground':      '#664400bb',
+                'scrollbarSlider.activeBackground':     '#664400dd',
+                'statusBar.background':                 '#190d00',
+                'statusBar.foreground':                 '#ff9900'
+            }
+        });
+
         console.log('REDAXO custom themes defined');
     }
     
@@ -417,7 +558,7 @@ class CodeFileBrowser {
         if (!files || files.length === 0) {
             fileList.html(`
                 <tr>
-                    <td colspan="5" class="text-center text-muted">
+                    <td colspan="7" class="text-center text-muted">
                         Keine Dateien gefunden
                     </td>
                 </tr>
@@ -430,6 +571,8 @@ class CodeFileBrowser {
         files.forEach(item => {
             const icon = this.getFileIcon(item);
             const size = item.type === 'folder' ? '-' : this.formatFileSize(item.size);
+            const ownerGroup = item.owner_group || '-';
+            const permissions = item.permissions_octal ? `${item.permissions_octal} (${item.permissions_symbolic || '-'})` : '-';
             const cssClass = item.type === 'folder' ? 'folder-item' : 'file-item';
             const clickable = item.type === 'folder' || this.isEditableFile(item.extension);
             
@@ -444,6 +587,8 @@ class CodeFileBrowser {
                     <td>${this.escapeHtml(item.name)}</td>
                     <td class="file-size">${size}</td>
                     <td>${item.modified || '-'}</td>
+                    <td class="file-size">${this.escapeHtml(ownerGroup)}</td>
+                    <td class="file-size">${this.escapeHtml(permissions)}</td>
                     <td>
                         ${item.type === 'file' && this.isEditableFile(item.extension) ? 
                             `<div class="btn-group" role="group">
@@ -614,6 +759,7 @@ class CodeFileBrowser {
         const enableWordWrap = localStorage.getItem('rex_code_word_wrap') !== 'false';
         const showMinimap = localStorage.getItem('rex_code_minimap') === 'true';
         const showWhitespace = localStorage.getItem('rex_code_whitespace') === 'true';
+        const showStickyScroll = localStorage.getItem('rex_code_sticky_scroll') !== 'false';
 
         // REDAXO Themes sind bereits in defineREDAXOThemes() definiert
         
@@ -622,12 +768,18 @@ class CodeFileBrowser {
             theme: currentTheme,
             fontSize: parseInt(currentFontSize),
             fontFamily: 'Monaco, Consolas, "Courier New", monospace',
-            minimap: { enabled: showMinimap },
+            minimap: { enabled: showMinimap, showRegionSectionHeaders: true },
             scrollBeyondLastLine: false,
             automaticLayout: true,
             wordWrap: enableWordWrap ? 'on' : 'off',
             lineNumbers: showLineNumbers ? 'on' : 'off',
-            renderWhitespace: showWhitespace ? 'all' : 'none'
+            renderWhitespace: showWhitespace ? 'all' : 'none',
+            stickyScroll: { enabled: showStickyScroll },
+            bracketPairColorization: { enabled: true },
+            guides: { bracketPairs: true, indentation: true },
+            autoClosingBrackets: 'always',
+            autoClosingQuotes: 'always',
+            inlayHints: { enabled: 'on' }
         });
 
         // Toolbar für Editor-Optionen hinzufügen
@@ -652,12 +804,14 @@ class CodeFileBrowser {
         const enableWordWrap = localStorage.getItem('rex_code_word_wrap') !== 'false';
         const showMinimap = localStorage.getItem('rex_code_minimap') === 'true';
         const showWhitespace = localStorage.getItem('rex_code_whitespace') === 'true';
+        const showStickyScroll = localStorage.getItem('rex_code_sticky_scroll') !== 'false';
 
         // Button-States setzen
         $('#toggle-line-numbers').css('opacity', showLineNumbers ? '1' : '0.5');
         $('#toggle-word-wrap').css('opacity', enableWordWrap ? '1' : '0.5');
         $('#toggle-minimap').css('opacity', showMinimap ? '1' : '0.5');
         $('#toggle-whitespace').css('opacity', showWhitespace ? '1' : '0.5');
+        $('#toggle-sticky-scroll').css('opacity', showStickyScroll ? '1' : '0.5');
 
         // Referenz auf Editor für Event-Handler
         const editor = this.monacoEditor;
@@ -722,6 +876,21 @@ class CodeFileBrowser {
             $('#toggle-whitespace').css('opacity', newValue ? '1' : '0.5');
             console.log('Whitespace:', newValue);
         });
+
+        $('#toggle-sticky-scroll').off('click').on('click', () => {
+            const currentValue = localStorage.getItem('rex_code_sticky_scroll') !== 'false';
+            const newValue = !currentValue;
+            localStorage.setItem('rex_code_sticky_scroll', newValue.toString());
+            
+            if (editor) {
+                editor.updateOptions({
+                    stickyScroll: { enabled: newValue }
+                });
+            }
+            
+            $('#toggle-sticky-scroll').css('opacity', newValue ? '1' : '0.5');
+            console.log('Sticky scroll:', newValue);
+        });
         
         console.log('Editor toolbar initialized');
     }
@@ -765,7 +934,18 @@ class CodeFileBrowser {
     }
 
     closeEditor() {
-        $('#code-editor-modal').modal('hide');
+        const modal = $('#code-editor-modal');
+        modal.modal('hide');
+
+        // Fallback: Falls Bootstrap-Modal intern hängen bleibt, hart schließen
+        setTimeout(() => {
+            if (modal.hasClass('in') || modal.is(':visible')) {
+                modal.removeClass('in').hide();
+                $('.modal-backdrop').remove();
+                $('body').removeClass('modal-open').css('padding-right', '');
+            }
+        }, 150);
+
         // Reset fullscreen state
         if (this.isFullscreen) {
             this.toggleFullscreen();
@@ -1482,6 +1662,68 @@ class CodeFileBrowser {
         } catch (error) {
             console.error('Error copying file:', error);
             alert('Fehler beim Kopieren der Datei: ' + error.message);
+        }
+    }
+
+    async fixPermissions() {
+        const currentPathLabel = this.currentPath || '/';
+        const mode = prompt(
+            `Dateirechte im Ordner "${currentPathLabel}" korrigieren?\n\n` +
+            'Eingabe "r" = rekursiv (inkl. Unterordner)\n' +
+            'Eingabe "n" = nur aktueller Ordner (eine Ebene)',
+            'r'
+        );
+
+        if (mode === null) {
+            return;
+        }
+
+        const normalizedMode = mode.trim().toLowerCase();
+        const recursive = normalizedMode !== 'n';
+
+        if (this.currentPath === '' && recursive) {
+            if (!confirm('Achtung: Rekursiv im ROOT kann sehr viele Dateien betreffen. Wirklich fortfahren?')) {
+                return;
+            }
+        }
+
+        try {
+            const cacheBuster = Date.now();
+            const formData = new FormData();
+            formData.append('path', this.currentPath);
+            formData.append('recursive', recursive ? '1' : '0');
+
+            const response = await fetch(`index.php?page=code/main&code_api=1&action=fix-permissions&_cb=${cacheBuster}`, {
+                method: 'POST',
+                body: formData,
+                cache: 'no-cache',
+                headers: {
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
+            if (!data.success) {
+                throw new Error(data.error || 'Fehler beim Fixen der Rechte');
+            }
+
+            const stats = data.stats || {};
+            alert(
+                `Rechte korrigiert (${recursive ? 'rekursiv' : 'eine Ebene'}):\n` +
+                `Verarbeitet: ${stats.processed ?? 0}\n` +
+                `Geändert: ${stats.changed ?? 0}\n` +
+                `Fehler: ${stats.failed ?? 0}`
+            );
+
+            this.loadFileList(this.currentPath);
+        } catch (error) {
+            console.error('Error fixing permissions:', error);
+            alert('Fehler beim Rechte-Fix: ' + error.message);
         }
     }
 
@@ -2642,6 +2884,9 @@ class CodeAreaReplacer {
                         <select class="form-control input-sm theme-switcher" style="height: 24px; padding: 0 5px; font-size: 12px; width: auto; background-color: ${selectBg}; color: ${selectColor}; border-color: ${toolbarBorder};">
                             <option value="redaxo-dark">REDAXO Dark</option>
                             <option value="redaxo-light">REDAXO Light</option>
+                            <option value="bernstein-8bit">Bernstein 8-bit</option>
+                            <option value="agk">AGK</option>
+                            <option value="st">ST</option>
                             <option value="vs-dark">Dark</option>
                             <option value="vs">Light</option>
                             <option value="hc-black">High Contrast</option>
@@ -2807,6 +3052,144 @@ class CodeAreaReplacer {
                 }
             });
 
+            // Bernstein 8-bit Theme – klassischer Phosphor-Bildschirm (Amber CRT)
+            monaco.editor.defineTheme('bernstein-8bit', {
+                base: 'vs-dark',
+                inherit: false,
+                rules: [
+                    { token: '',           foreground: 'ffb000', background: '1a0f00' },
+                    { token: 'comment',    foreground: '7a4f00', fontStyle: 'italic' },
+                    { token: 'keyword',    foreground: 'ffd700', fontStyle: 'bold' },
+                    { token: 'string',     foreground: 'ff8c00' },
+                    { token: 'number',     foreground: 'ffcc44' },
+                    { token: 'variable',   foreground: 'ffa500' },
+                    { token: 'function',   foreground: 'ffd700' },
+                    { token: 'type',       foreground: 'ffb000' },
+                    { token: 'class',      foreground: 'ffc200', fontStyle: 'bold' },
+                    { token: 'operator',   foreground: 'ff6600' },
+                    { token: 'delimiter',  foreground: 'cc8800' },
+                    { token: 'tag',        foreground: 'ffd700', fontStyle: 'bold' },
+                    { token: 'attribute',  foreground: 'ffaa00' },
+                ],
+                colors: {
+                    'editor.background':                    '#1a0f00',
+                    'editor.foreground':                    '#ffb000',
+                    'editorLineNumber.foreground':          '#7a4f00',
+                    'editorLineNumber.activeForeground':    '#ffb000',
+                    'editor.selectionBackground':           '#4d2e00',
+                    'editor.lineHighlightBackground':       '#261500',
+                    'editorCursor.foreground':              '#ffb000',
+                    'editorCursor.background':              '#1a0f00',
+                    'editorWhitespace.foreground':          '#3d2200',
+                    'editorIndentGuide.background1':        '#3d2200',
+                    'editorIndentGuide.activeBackground1':  '#7a4f00',
+                    'editor.selectionHighlightBackground':  '#4d2e0055',
+                    'editorBracketMatch.background':        '#4d2e0099',
+                    'editorBracketMatch.border':            '#ffb000',
+                    'editorWidget.background':              '#261500',
+                    'editorWidget.foreground':              '#ffb000',
+                    'editorWidget.border':                  '#7a4f00',
+                    'input.background':                     '#261500',
+                    'input.foreground':                     '#ffb000',
+                    'input.border':                         '#7a4f00',
+                    'scrollbarSlider.background':           '#4d2e0088',
+                    'scrollbarSlider.hoverBackground':      '#7a4f00bb',
+                    'scrollbarSlider.activeBackground':     '#7a4f00dd'
+                }
+            });
+
+            // AGK – Grüner Phosphor-Monitor (Green CRT)
+            monaco.editor.defineTheme('agk', {
+                base: 'vs-dark',
+                inherit: false,
+                rules: [
+                    { token: '',           foreground: '33ff33', background: '001a00' },
+                    { token: 'comment',    foreground: '1a6e1a', fontStyle: 'italic' },
+                    { token: 'keyword',    foreground: '66ff66', fontStyle: 'bold' },
+                    { token: 'string',     foreground: '00cc44' },
+                    { token: 'number',     foreground: '99ff99' },
+                    { token: 'variable',   foreground: '44dd44' },
+                    { token: 'function',   foreground: '66ff66' },
+                    { token: 'type',       foreground: '33ff33' },
+                    { token: 'class',      foreground: '88ff88', fontStyle: 'bold' },
+                    { token: 'operator',   foreground: '00aa22' },
+                    { token: 'delimiter',  foreground: '228822' },
+                    { token: 'tag',        foreground: '66ff66', fontStyle: 'bold' },
+                    { token: 'attribute',  foreground: '44cc44' },
+                ],
+                colors: {
+                    'editor.background':                    '#001a00',
+                    'editor.foreground':                    '#33ff33',
+                    'editorLineNumber.foreground':          '#1a6e1a',
+                    'editorLineNumber.activeForeground':    '#33ff33',
+                    'editor.selectionBackground':           '#004400',
+                    'editor.lineHighlightBackground':       '#002200',
+                    'editorCursor.foreground':              '#33ff33',
+                    'editorCursor.background':              '#001a00',
+                    'editorWhitespace.foreground':          '#003300',
+                    'editorIndentGuide.background1':        '#003300',
+                    'editorIndentGuide.activeBackground1':  '#1a6e1a',
+                    'editor.selectionHighlightBackground':  '#00440055',
+                    'editorBracketMatch.background':        '#00440099',
+                    'editorBracketMatch.border':            '#33ff33',
+                    'editorWidget.background':              '#002200',
+                    'editorWidget.foreground':              '#33ff33',
+                    'editorWidget.border':                  '#1a6e1a',
+                    'input.background':                     '#002200',
+                    'input.foreground':                     '#33ff33',
+                    'input.border':                         '#1a6e1a',
+                    'scrollbarSlider.background':           '#00440088',
+                    'scrollbarSlider.hoverBackground':      '#1a6e1abb',
+                    'scrollbarSlider.activeBackground':     '#1a6e1add'
+                }
+            });
+
+            // ST – Raumschiff-Terminal (LCARS-inspiriert: Orange/Lila/Blau auf Schwarz)
+            monaco.editor.defineTheme('st', {
+                base: 'vs-dark',
+                inherit: false,
+                rules: [
+                    { token: '',           foreground: 'ff9900', background: '000000' },
+                    { token: 'comment',    foreground: '664400', fontStyle: 'italic' },
+                    { token: 'keyword',    foreground: 'cc88ff', fontStyle: 'bold' },
+                    { token: 'string',     foreground: '66ccff' },
+                    { token: 'number',     foreground: 'ffcc00' },
+                    { token: 'variable',   foreground: 'ff6600' },
+                    { token: 'function',   foreground: '99ccff' },
+                    { token: 'type',       foreground: 'cc88ff' },
+                    { token: 'class',      foreground: 'ffaa33', fontStyle: 'bold' },
+                    { token: 'operator',   foreground: 'ff6600' },
+                    { token: 'delimiter',  foreground: '996633' },
+                    { token: 'tag',        foreground: 'cc88ff', fontStyle: 'bold' },
+                    { token: 'attribute',  foreground: '66ccff' },
+                ],
+                colors: {
+                    'editor.background':                    '#000000',
+                    'editor.foreground':                    '#ff9900',
+                    'editorLineNumber.foreground':          '#664400',
+                    'editorLineNumber.activeForeground':    '#ffcc00',
+                    'editor.selectionBackground':           '#331a00',
+                    'editor.lineHighlightBackground':       '#190d00',
+                    'editorCursor.foreground':              '#ffcc00',
+                    'editorCursor.background':              '#000000',
+                    'editorWhitespace.foreground':          '#331a00',
+                    'editorIndentGuide.background1':        '#331a00',
+                    'editorIndentGuide.activeBackground1':  '#664400',
+                    'editor.selectionHighlightBackground':  '#331a0055',
+                    'editorBracketMatch.background':        '#331a0099',
+                    'editorBracketMatch.border':            '#cc88ff',
+                    'editorWidget.background':              '#190d00',
+                    'editorWidget.foreground':              '#ff9900',
+                    'editorWidget.border':                  '#664400',
+                    'input.background':                     '#190d00',
+                    'input.foreground':                     '#ff9900',
+                    'input.border':                         '#664400',
+                    'scrollbarSlider.background':           '#33190088',
+                    'scrollbarSlider.hoverBackground':      '#664400bb',
+                    'scrollbarSlider.activeBackground':     '#664400dd'
+                }
+            });
+
             // Sprache ermitteln (Default: PHP/HTML Mix)
             let language = 'php';
             if (textarea.hasClass('rex-code-css')) language = 'css';
@@ -2826,7 +3209,12 @@ class CodeAreaReplacer {
                 scrollBeyondLastLine: false,
                 lineNumbers: showLineNumbers ? 'on' : 'off',
                 wordWrap: enableWordWrap ? 'on' : 'off',
-                renderWhitespace: showWhitespace ? 'all' : 'none'
+                renderWhitespace: showWhitespace ? 'all' : 'none',
+                bracketPairColorization: { enabled: true },
+                guides: { bracketPairs: true, indentation: true },
+                autoClosingBrackets: 'always',
+                autoClosingQuotes: 'always',
+                inlayHints: { enabled: 'on' }
             });
 
             // Theme Switcher Event

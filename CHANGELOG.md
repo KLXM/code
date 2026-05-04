@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.6.0] - 2026-05-04
+### Changed
+- Monaco Editor auf Version 0.55.1 aktualisiert.
+- DOMPurify über npm-Override auf 3.4.2 angehoben (Sicherheitsfixes).
+- Build-Pipeline auf ESM + esbuild migriert (AMD-Build ist seit Monaco 0.53 deprecated).
+  - Neue Einstiegsdatei `src/monaco-entry.js` mit `window.MonacoEnvironment`-Worker-Routing.
+  - Separate Worker-Bundles für JSON, CSS, HTML, TypeScript und den Basis-Editor.
+  - `build.js` komplett neu auf esbuild umgestellt (kein AMD-Copy mehr).
+  - `monaco-loader.js` wird jetzt vom Build generiert und lädt das ESM-Bundle.
+- Theme/CSS-Overrides für Dark Mode und Auto Dark Mode auf den AddOn-Seiten verbessert (File Browser, Backup & Trash).
+- Suchergebnis-Auszüge in der Code-Suche gekürzt und besser lesbar gemacht.
+
+### Added
+- Sticky Scroll: neue Toolbar-Schaltfläche (`#toggle-sticky-scroll`) und localStorage-Einstellung `rex_code_sticky_scroll`.
+- Minimap zeigt jetzt Region/Section-Header an (`showRegionSectionHeaders: true`).
+- Monaco-CSS (`monaco.bundle.css`) wird in `boot.php` eingebunden (Schriftarten & Styles aus ESM-Bundle).
+- Neue Monaco-Editor-Optionen standardmäßig aktiviert:
+  - Bracket Pair Colorization
+  - Indentation/Bracket Guides
+  - Auto-Closing Brackets/Quotes
+  - Inlay Hints (wenn von der Sprache unterstützt)
+- Dateibrowser zeigt jetzt Dateimetadaten an:
+  - Besitzer/Gruppe (`owner:group`)
+  - Rechte oktal + symbolisch (z. B. `0755 (drwxr-xr-x)`)
+- Neuer Toolbar-Button "Rechte fixen" im File Browser:
+  - Setzt Verzeichnisse auf `0755`
+  - Setzt Dateien auf `0644`
+  - Optional rekursiv inkl. Unterordner
+  - Mit Ergebnisstatistik (verarbeitet/geändert/fehlerhaft)
+
+### Fixed
+- Code-Suche überspringt jetzt den REDAXO-Cache-Pfad zuverlässig.
+- Suche kann Treffer direkt in der passenden Datei/Zeile öffnen.
+- Schließen/Modal-Verhalten des Editors nach Änderungen stabilisiert.
+
 ## [1.5.0] - 2026-03-03
 ### Added
 - API-Integration für das `api` AddOn über RoutePackages (`code` und `backend/code`).

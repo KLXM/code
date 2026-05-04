@@ -94,6 +94,9 @@ $content = '
                     <button class="btn btn-default btn-xs" id="btn-hard-refresh" title="App-Cache leeren & Seite neu laden">
                         <i class="rex-icon fa-eraser"></i>
                     </button>
+                    <button class="btn btn-warning btn-xs" id="btn-fix-permissions" title="Dateirechte im aktuellen Ordner korrigieren (644/755)">
+                        <i class="rex-icon fa-wrench"></i> Rechte fixen
+                    </button>
                     <button class="btn btn-success btn-xs" id="btn-new-file" title="Neue Datei erstellen">
                         <i class="rex-icon fa-file-o"></i> Neue Datei
                     </button>
@@ -136,12 +139,14 @@ $content = '
                         <th>Name</th>
                         <th style="width: 100px">Größe</th>
                         <th style="width: 150px">Geändert</th>
+                        <th style="width: 170px">Besitzer</th>
+                        <th style="width: 130px">Rechte</th>
                         <th style="width: 130px">Aktionen</th>
                     </tr>
                 </thead>
                 <tbody id="file-list">
                     <tr>
-                        <td colspan="5" class="text-center">
+                        <td colspan="7" class="text-center">
                             <i class="rex-icon fa-spinner fa-spin"></i> Lade...
                         </td>
                     </tr>
@@ -177,6 +182,9 @@ $content = '
                         <select id="theme-switcher" class="form-control input-sm" style="height: 22px; padding: 0 5px; font-size: 12px; width: auto; display: inline-block;">
                             <option value="redaxo-dark">REDAXO Dark</option>
                             <option value="redaxo-light">REDAXO Light</option>
+                            <option value="bernstein-8bit">Bernstein 8-bit</option>
+                            <option value="agk">AGK</option>
+                            <option value="st">ST</option>
                             <option value="vs-dark">VS Dark</option>
                             <option value="vs">VS Light</option>
                             <option value="hc-black">High Contrast</option>
@@ -195,6 +203,9 @@ $content = '
                         </button>
                         <button type="button" id="toggle-whitespace" class="btn btn-xs btn-default" title="Whitespace anzeigen" style="height: 22px; padding: 2px 8px;">
                             <i class="rex-icon fa-paragraph"></i>
+                        </button>
+                        <button type="button" id="toggle-sticky-scroll" class="btn btn-xs btn-default" title="Sticky Scroll ein/aus" style="height: 22px; padding: 2px 8px;">
+                            <i class="rex-icon fa-thumb-tack"></i>
                         </button>
                     </div>
 
@@ -230,6 +241,17 @@ $content = '
 </div>
 
 <style>
+:root {
+    --code-surface-muted: #f8f9fa;
+    --code-surface-card: #ffffff;
+    --code-surface-hover: #e3f2fd;
+    --code-border: #ddd;
+    --code-border-soft: #e0e0e0;
+    --code-text-muted: #666;
+    --code-text-soft: #999;
+    --code-danger: #d32f2f;
+}
+
 .code-editor-container .table > tbody > tr:hover {
     background-color: #f5f5f5;
 }
@@ -244,7 +266,7 @@ $content = '
 }
 
 .code-file-readonly {
-    color: #999;
+    color: var(--code-text-soft);
 }
 
 .code-breadcrumb {
@@ -310,7 +332,7 @@ $content = '
 .file-size {
     font-family: monospace;
     font-size: 0.9em;
-    color: #666;
+    color: var(--code-text-muted);
 }
 
 /* Snippets Sidebar */
@@ -331,17 +353,17 @@ $content = '
     font-weight: 600;
     font-size: 12px;
     text-transform: uppercase;
-    color: #666;
+    color: var(--code-text-muted);
     margin-bottom: 8px;
     padding-bottom: 5px;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--code-border);
 }
 
 .snippet-item {
     padding: 6px 10px;
     margin-bottom: 3px;
-    background: white;
-    border: 1px solid #e0e0e0;
+    background: var(--code-surface-card);
+    border: 1px solid var(--code-border-soft);
     border-radius: 3px;
     cursor: pointer;
     font-size: 12px;
@@ -349,7 +371,7 @@ $content = '
 }
 
 .snippet-item:hover {
-    background: #e3f2fd;
+    background: var(--code-surface-hover);
     border-color: #2196f3;
     transform: translateX(2px);
 }
@@ -361,7 +383,7 @@ $content = '
 
 .snippet-item-preview {
     font-size: 10px;
-    color: #999;
+    color: var(--code-text-soft);
     font-family: monospace;
     margin-top: 2px;
     white-space: nowrap;
@@ -375,8 +397,8 @@ $content = '
     padding: 3px 8px;
     margin-right: 5px;
     margin-bottom: 5px;
-    background: white;
-    border: 1px solid #ddd;
+    background: var(--code-surface-card);
+    border: 1px solid var(--code-border);
     border-radius: 3px;
     font-size: 11px;
     cursor: pointer;
@@ -384,7 +406,7 @@ $content = '
 }
 
 .favorite-item:hover {
-    background: #e3f2fd;
+    background: var(--code-surface-hover);
     border-color: #2196f3;
 }
 
@@ -394,12 +416,52 @@ $content = '
 
 .favorite-item .remove-favorite {
     margin-left: 5px;
-    color: #999;
+    color: var(--code-text-soft);
     cursor: pointer;
 }
 
 .favorite-item .remove-favorite:hover {
-    color: #d32f2f;
+    color: var(--code-danger);
+}
+
+body.rex-theme-dark {
+    --code-surface-muted: #1e2935;
+    --code-surface-card: #243241;
+    --code-surface-hover: #2c3d4f;
+    --code-border: #3a4b5d;
+    --code-border-soft: #3a4b5d;
+    --code-text-muted: #b6c4d3;
+    --code-text-soft: #91a2b4;
+    --code-danger: #ff8a80;
+}
+
+@media (prefers-color-scheme: dark) {
+    body.rex-has-theme:not(.rex-theme-light) {
+        --code-surface-muted: #1e2935;
+        --code-surface-card: #243241;
+        --code-surface-hover: #2c3d4f;
+        --code-border: #3a4b5d;
+        --code-border-soft: #3a4b5d;
+        --code-text-muted: #b6c4d3;
+        --code-text-soft: #91a2b4;
+        --code-danger: #ff8a80;
+    }
+}
+
+/* Inline-Styles der Seite für Dark/Auto überschreiben */
+#favorites-bar {
+    background: var(--code-surface-muted) !important;
+    border-color: var(--code-border) !important;
+}
+
+#favorites-bar strong {
+    color: var(--code-text-muted) !important;
+}
+
+#snippets-sidebar,
+#snippets-sidebar > div {
+    background: var(--code-surface-muted) !important;
+    border-color: var(--code-border) !important;
 }
 </style>';
 

@@ -9,9 +9,10 @@
     "postinstall": "npm run build"
   },
   "dependencies": {
-    "monaco-editor": "^0.45.0"
+    "monaco-editor": "^0.55.1"
   },
   "devDependencies": {
+    "esbuild": "^0.25.0",
     "fs-extra": "^11.2.0"
   },
   "keywords": [
@@ -21,5 +22,8 @@
     "file-browser"
   ],
   "author": "Friends Of REDAXO",
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "dompurify": "^3.4.2"
+  }
 }

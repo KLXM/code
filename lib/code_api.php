@@ -138,6 +138,8 @@ class CodeApi
                     return $this->createFile(rex_post('path', 'string'), rex_post('name', 'string'), rex_post('type', 'string', 'file'));
                 case 'copy':
                     return $this->copyFile(rex_post('file', 'string'), rex_post('newName', 'string', ''));
+                case 'fix-permissions':
+                    return $this->fixPermissions(rex_post('path', 'string', ''), rex_post('recursive', 'bool', false));
                 default:
                     throw new Exception('Unknown action: ' . $action);
             }
@@ -175,7 +177,10 @@ class CodeApi
                         'name' => $file,
                         'path' => $relativePath,
                         'type' => 'folder',
-                        'modified' => date('d.m.Y H:i', filemtime($filePath))
+                        'modified' => date('d.m.Y H:i', filemtime($filePath)),
+                        'owner_group' => $this->getOwnerGroup($filePath),
+                        'permissions_octal' => $this->getPermissionsOctal($filePath),
+                        'permissions_symbolic' => $this->getPermissionsSymbolic($filePath),
                     ];
                 }
             } else {
@@ -188,7 +193,10 @@ class CodeApi
                         'extension' => $extension,
                         'size' => $this->formatBytes(filesize($filePath)),
                         'modified' => date('d.m.Y H:i', filemtime($filePath)),
-                        'writable' => is_writable($filePath)
+                        'writable' => is_writable($filePath),
+                        'owner_group' => $this->getOwnerGroup($filePath),
+                        'permissions_octal' => $this->getPermissionsOctal($filePath),
+                        'permissions_symbolic' => $this->getPermissionsSymbolic($filePath),
                     ];
                 }
             }
@@ -232,6 +240,132 @@ class CodeApi
                 'writable' => is_writable($fullPath)
             ]
         ];
+    }
+
+    private function fixPermissions(string $path, bool $recursive): array
+    {
+        $basePath = rex_path::base();
+        $fullPath = $basePath . ltrim($path, '/');
+
+        if (!file_exists($fullPath) || !$this->isAllowedPath($fullPath)) {
+            return ['success' => false, 'error' => 'Path not found or not allowed'];
+        }
+
+        $stats = [
+            'processed' => 0,
+            'changed' => 0,
+            'failed' => 0,
+            'errors' => [],
+        ];
+
+        if ($recursive) {
+            $this->applyPermissionsRecursive($fullPath, $stats);
+        } else {
+            $this->applyPermissionsSingleLevel($fullPath, $stats);
+        }
+
+        return [
+            'success' => true,
+            'message' => 'Permissions fixed',
+            'stats' => [
+                'processed' => $stats['processed'],
+                'changed' => $stats['changed'],
+                'failed' => $stats['failed'],
+            ],
+            'errors' => $stats['errors'],
+        ];
+    }
+
+    private function applyPermissionsSingleLevel(string $path, array &$stats): void
+    {
+        $this->applyPermissionsToPath($path, $stats);
+
+        if (!is_dir($path)) {
+            return;
+        }
+
+        $entries = scandir($path);
+        if ($entries === false) {
+            return;
+        }
+
+        foreach ($entries as $entry) {
+            if ('.' === $entry || '..' === $entry) {
+                continue;
+            }
+
+            if ($this->isExcludedDir($entry)) {
+                continue;
+            }
+
+            $entryPath = $path . '/' . $entry;
+            $this->applyPermissionsToPath($entryPath, $stats);
+        }
+    }
+
+    private function applyPermissionsRecursive(string $path, array &$stats): void
+    {
+        if (is_dir($path) && $this->isExcludedDir(basename($path))) {
+            return;
+        }
+
+        $this->applyPermissionsToPath($path, $stats);
+
+        if (!is_dir($path)) {
+            return;
+        }
+
+        $entries = scandir($path);
+        if ($entries === false) {
+            return;
+        }
+
+        foreach ($entries as $entry) {
+            if ('.' === $entry || '..' === $entry) {
+                continue;
+            }
+
+            $entryPath = $path . '/' . $entry;
+
+            if (is_dir($entryPath)) {
+                $this->applyPermissionsRecursive($entryPath, $stats);
+            } else {
+                $this->applyPermissionsToPath($entryPath, $stats);
+            }
+        }
+    }
+
+    private function applyPermissionsToPath(string $path, array &$stats): void
+    {
+        if (is_link($path) || !$this->isAllowedPath($path)) {
+            return;
+        }
+
+        $stats['processed']++;
+        $targetPerm = is_dir($path) ? 0755 : 0644;
+        $currentPerm = fileperms($path);
+
+        if (false === $currentPerm) {
+            $stats['failed']++;
+            if (count($stats['errors']) < 10) {
+                $stats['errors'][] = 'Cannot read permissions: ' . $path;
+            }
+            return;
+        }
+
+        if (($currentPerm & 0777) === $targetPerm) {
+            return;
+        }
+
+        if (@chmod($path, $targetPerm)) {
+            $stats['changed']++;
+            return;
+        }
+
+        $stats['failed']++;
+        if (count($stats['errors']) < 10) {
+            $stats['errors'][] = 'chmod failed: ' . $path;
+        }
     }
 
     private function saveFile(string $filePath, string $content): array
@@ -286,48 +420,95 @@ class CodeApi
 
         $results = [];
         $basePath = rex_path::base();
-        
-        $this->searchInDirectory($basePath, $searchTerm, $results);
-        
+
+        // Absolut-Pfade, die grundsätzlich von der Suche ausgeschlossen sind
+        $excludedPaths = [
+            rtrim(rex_path::cache(), '/'),
+        ];
+
+        $this->searchInDirectory($basePath, $searchTerm, $results, $excludedPaths);
+
         return ['success' => true, 'data' => $results];
     }
 
-    private function searchInDirectory(string $dir, string $searchTerm, array &$results): void
+    /**
+     * Kürzt einen langen Zeilen-Inhalt auf max. $maxLength Zeichen,
+     * zentriert um die Fundstelle des Suchbegriffs.
+     */
+    private function truncateMatchContent(string $line, string $searchTerm, int $maxLength = 120): string
     {
-        if (!is_dir($dir) || !$this->isAllowedPath($dir)) return;
-        
+        $line = trim($line);
+        if (mb_strlen($line) <= $maxLength) {
+            return $line;
+        }
+
+        $matchPos = mb_stripos($line, $searchTerm);
+        if ($matchPos === false) {
+            return mb_substr($line, 0, $maxLength) . '…';
+        }
+
+        $halfWindow = (int) (($maxLength - mb_strlen($searchTerm)) / 2);
+        $start = max(0, $matchPos - $halfWindow);
+        $end   = min(mb_strlen($line), $matchPos + mb_strlen($searchTerm) + $halfWindow);
+
+        $excerpt = mb_substr($line, $start, $end - $start);
+        return ($start > 0 ? '…' : '') . $excerpt . ($end < mb_strlen($line) ? '…' : '');
+    }
+
+    /**
+     * @param list<string> $excludedPaths Absolute Pfade, die übersprungen werden
+     */
+    private function searchInDirectory(string $dir, string $searchTerm, array &$results, array $excludedPaths = []): void
+    {
+        if (!is_dir($dir) || !$this->isAllowedPath($dir)) {
+            return;
+        }
+
+        // Absolut-Pfad-basierte Ausschlüsse (z. B. redaxo/cache/)
+        $normalizedDir = rtrim($dir, '/');
+        foreach ($excludedPaths as $excludedPath) {
+            if ($normalizedDir === $excludedPath || str_starts_with($normalizedDir . '/', $excludedPath . '/')) {
+                return;
+            }
+        }
+
         $files = scandir($dir);
         foreach ($files as $file) {
-            if ($file === '.' || $file === '..') continue;
-            
+            if ($file === '.' || $file === '..') {
+                continue;
+            }
+
             $filePath = $dir . '/' . $file;
-            
+
             if (is_dir($filePath)) {
                 $dirName = basename($filePath);
                 if (!$this->isExcludedDir($dirName)) {
-                    $this->searchInDirectory($filePath, $searchTerm, $results);
+                    $this->searchInDirectory($filePath, $searchTerm, $results, $excludedPaths);
                 }
             } else {
                 $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
                 if ($this->isAllowedExtension($extension)) {
                     $content = file_get_contents($filePath);
-                        if (stripos($content, $searchTerm) !== false) {
-                            $relativePath = str_replace(rex_path::base(), '', $filePath);
-                            $lines = explode("\n", $content);
-                            $matches = [];                        foreach ($lines as $lineNum => $line) {
+                    if ($content !== false && stripos($content, $searchTerm) !== false) {
+                        $relativePath = str_replace(rex_path::base(), '', $filePath);
+                        $lines = explode("\n", $content);
+                        $matches = [];
+                        foreach ($lines as $lineNum => $line) {
                             if (stripos($line, $searchTerm) !== false) {
                                 $matches[] = [
-                                    'line' => $lineNum + 1,
-                                    'content' => trim($line)
+                                    'line'    => $lineNum + 1,
+                                    'content' => $this->truncateMatchContent($line, $searchTerm),
                                 ];
-                                if (count($matches) >= 5) break; // Max 5 Matches pro Datei
+                                if (count($matches) >= 5) {
+                                    break; // Max 5 Matches pro Datei
+                                }
                             }
                         }
-                        
+
                         $results[] = [
                             'path' => $relativePath,
                             'file' => $relativePath, // Für Kompatibilität
-                            'matches' => $matches
+                            'matches' => $matches,
                         ];
                     }
                 }
@@ -599,6 +780,67 @@ class CodeApi
         $units = ['B', 'KB', 'MB', 'GB'];
         $factor = floor((strlen($bytes) - 1) / 3);
         return sprintf("%.1f %s", $bytes / pow(1024, $factor), $units[$factor]);
+    }
+
+    private function getOwnerGroup(string $path): string
+    {
+        $owner = '-';
+        $group = '-';
+
+        $ownerId = @fileowner($path);
+        $groupId = @filegroup($path);
+
+        if (false !== $ownerId) {
+            if (function_exists('posix_getpwuid')) {
+                $ownerInfo = @posix_getpwuid($ownerId);
+                $owner = is_array($ownerInfo) && isset($ownerInfo['name']) ? (string) $ownerInfo['name'] : (string) $ownerId;
+            } else {
+                $owner = (string) $ownerId;
+            }
+        }
+
+        if (false !== $groupId) {
+            if (function_exists('posix_getgrgid')) {
+                $groupInfo = @posix_getgrgid($groupId);
+                $group = is_array($groupInfo) && isset($groupInfo['name']) ? (string) $groupInfo['name'] : (string) $groupId;
+            } else {
+                $group = (string) $groupId;
+            }
+        }
+
+        return $owner . ':' . $group;
+    }
+
+    private function getPermissionsOctal(string $path): string
+    {
+        $permissions = @fileperms($path);
+        if (false === $permissions) {
+            return '-';
+        }
+
+        return substr(sprintf('%o', $permissions), -4);
+    }
+
+    private function getPermissionsSymbolic(string $path): string
+    {
+        $permissions = @fileperms($path);
+        if (false === $permissions) {
+            return '-';
+        }
+
+        $symbolic = is_dir($path) ? 'd' : '-';
+
+        $map = [
+            0x0100 => 'r', 0x0080 => 'w', 0x0040 => 'x',
+            0x0020 => 'r', 0x0010 => 'w', 0x0008 => 'x',
+            0x0004 => 'r', 0x0002 => 'w', 0x0001 => 'x',
+        ];
+
+        foreach ($map as $mask => $char) {
+            $symbolic .= ($permissions & $mask) ? $char : '-';
+        }
+
+        return $symbolic;
     }
 
     /**
